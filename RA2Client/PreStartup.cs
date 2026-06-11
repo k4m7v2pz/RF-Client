@@ -244,13 +244,27 @@ namespace Ra2Client
 
             ProgramConstants.DisplayErrorAction("KABOOOOOOOM".L10N("UI:Main:FatalErrorTitle"), error, true);
         }
-
         [SupportedOSPlatform("windows")]
         private static void CheckPermissions()
         {
+            // ① Wine：完全绕过 Windows 权限模型
+            if (ClientCore.PlatformHelper.IsWine())
+            {
+                if (HasWriteAccessByIOTest(ProgramConstants.GamePath))
+                    return;
+        
+                ProgramConstants.DisplayErrorAction(
+                    "Write access required",
+                    "The game directory is not writable. Please move the game to a writable location.",
+                    true);
+                Environment.Exit(1);
+            }
+        
+            // ② 真·Windows：继续用 ACL + Admin 逻辑
             if (UserHasDirectoryAccessRights(ProgramConstants.GamePath, FileSystemRights.Modify))
                 return;
-
+        
+            // ③ Windows 提权提示（只对 Windows 有意义）
             string error = string.Format(("You seem to be running {0} from a write-protected directory." + Environment.NewLine + Environment.NewLine +
                 "For {1} to function properly when run from a write-protected directory, it needs administrative priveleges." + Environment.NewLine + Environment.NewLine +
                 "Would you like to restart the client with administrative rights?" + Environment.NewLine + Environment.NewLine +
@@ -330,5 +344,26 @@ namespace Ra2Client
             }
             return isInRoleWithAccess;
         }
+        private static bool HasWriteAccessByIOTest(string directoryPath)
+        {
+            try
+            {
+                string testFilePath = Path.Combine(
+                    directoryPath,
+                    $".write_test_{Guid.NewGuid():N}.tmp"
+                );
+        
+                File.WriteAllText(testFilePath, "test");
+                File.Delete(testFilePath);
+        
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Wine IO write test failed: {ex.Message}");
+                return false;
+            }
+        }
+
     }
 }
